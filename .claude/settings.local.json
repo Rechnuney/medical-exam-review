@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/lonelygod/**)",
+      "Bash(claude --resume 7a8a0247-1d0a-4111-b76b-7dbc9404fdc3)",
+      "Bash(claude --resume 7a8a0247-1d0a-4111-b76b-7dbc9404fdc3 --fork-session)",
+      "Bash(claude agents *)",
+      "Bash(claude --resume 7a8a0247-1d0a-4111-b76b-7dbc9404fdc3 --fork-session \"继续上一次的工作\")"
+    ]
+  }
+}
