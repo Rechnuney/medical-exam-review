@@ -50,34 +50,55 @@ function submitQA(item) {
 
 const mcStates = ref({})
 function getMCState(id) {
-  if (!mcStates.value[id]) mcStates.value[id] = { selected: null, showAnswer: false }
+  if (!mcStates.value[id]) mcStates.value[id] = { selected: [], showAnswer: false }
   return mcStates.value[id]
 }
-function selectOption(item, label) {
+function toggleOption(item, label) {
   const state = getMCState(item.id)
   if (state.showAnswer) return
-  state.selected = label
+  const idx = state.selected.indexOf(label)
+  if (idx >= 0) state.selected.splice(idx, 1)
+  else state.selected.push(label)
+}
+function confirmMC(item) {
+  const state = getMCState(item.id)
+  if (state.selected.length === 0) return
   state.showAnswer = true
-  var answers = (item.correctAnswer || '').split(',').map(function(a) { return a.trim(); });
-  if (item.correctAnswer && !answers.includes(label) && autoAddWrong.value) {
+  if (!item.correctAnswer) return
+  const correctAnswers = (item.correctAnswer || '').split(',').map(function(a) { return a.trim(); })
+  const isCorrect = state.selected.length === correctAnswers.length &&
+    state.selected.every(function(s) { return correctAnswers.includes(s); })
+  if (!isCorrect && autoAddWrong.value) {
     addWrongQuestion(subjectId.value, {
       id: item.id, section: item.section, chapter: item.chapter, topic: item.topic,
       type: item.type, question: item.question, options: item.options || [],
-      correctAnswer: item.correctAnswer || '', userAnswer: label,
+      correctAnswer: item.correctAnswer || '', userAnswer: state.selected.join(','),
     })
   }
 }
 function getMCOptClass(id, label, correct) {
   const state = getMCState(id)
-  if (!state.showAnswer) return 'mc-opt-clickable'
+  if (!state.showAnswer) {
+    if (state.selected.includes(label)) return 'mc-opt-selected'
+    return 'mc-opt-clickable'
+  }
   if (!correct) {
-    if (label === state.selected) return 'mc-opt-selected'
+    if (state.selected.includes(label)) return 'mc-opt-selected'
     return 'mc-opt-dimmed'
   }
-  const answers = (correct || '').split(',').map(function(a) { return a.trim(); });
+  const answers = (correct || '').split(',').map(function(a) { return a.trim(); })
   if (answers.includes(label)) return 'mc-opt-correct'
-  if (label === state.selected) return 'mc-opt-wrong'
+  if (state.selected.includes(label)) return 'mc-opt-wrong'
   return 'mc-opt-dimmed'
+}
+function getMCFeedback(id, item) {
+  const state = getMCState(id)
+  if (!state.showAnswer || !item.correctAnswer) return null
+  const correctAnswers = (item.correctAnswer || '').split(',').map(function(a) { return a.trim(); })
+  const userSelected = state.selected.slice().sort()
+  const isCorrect = userSelected.length === correctAnswers.length &&
+    userSelected.every(function(s) { return correctAnswers.includes(s); })
+  return { isCorrect, correctAnswers }
 }
 function getOptText(opts, label) {
   const o = opts?.find(x => x.label === label)
@@ -143,6 +164,39 @@ function isCorrectOpt(label, correctAnswer) {
         <!-- Practice Mode -->
         <template v-else>
           <div class="qa-q"><span class="item-num">{{ item.num }}.</span><span v-html="renderTextWithBlanks(cleanQuestionDisplay(item.question))"></span></div>
+          <template v-if="item.type === 'multiple_choice'">
+            <ul class="mc-list" v-if="item.options">
+              <li v-for="opt in item.options" :key="opt.label"
+                  :class="getMCOptClass(item.id, opt.label, item.correctAnswer)"
+                  @click="toggleOption(item, opt.label)">
+                <span class="mc-check">{{ getMCState(item.id).selected.includes(opt.label) ? '☑' : '☐' }}</span>
+                <span class="mc-text">{{ opt.label }}. {{ opt.text }}</span>
+              </li>
+            </ul>
+            <button class="btn" v-if="!getMCState(item.id).showAnswer"
+                    @click="confirmMC(item)"
+                    :disabled="getMCState(item.id).selected.length === 0"
+                    style="margin-top:8px">
+              确认选择
+            </button>
+            <div v-if="getMCState(item.id).showAnswer" style="margin-top:8px;font-weight:600">
+              <template v-if="getMCFeedback(item.id, item)">
+                <span v-if="getMCFeedback(item.id, item).isCorrect" class="fb-correct">🎉 正确！</span>
+                <span v-else class="fb-wrong">
+                  😞 正确答案：
+                  <template v-for="(a, ai) in getMCFeedback(item.id, item).correctAnswers" :key="a">
+                    <template v-if="ai > 0">, </template>
+                    {{ getOptText(item.options, a) }}
+                  </template>
+                  （你选了：
+                  <template v-for="(s, si) in getMCState(item.id).selected" :key="s">
+                    <template v-if="si > 0">, </template>
+                    {{ s }}
+                  </template>）
+                </span>
+              </template>
+            </div>
+          </template>
           <template v-if="item.type === 'qa'">
             <div v-if="!getQAState(item.id).submitted" class="qa-practice-area">
               <textarea v-model="getQAState(item.id).userInput" class="qa-textarea" placeholder="在此输入你的答案…" rows="3" @keydown.enter.prevent="submitQA(item)"></textarea>
@@ -151,20 +205,6 @@ function isCorrectOpt(label, correctAnswer) {
             <div v-else class="qa-result">
               <div v-if="getQAState(item.id).isCorrect" class="fb-correct">🎉 回答正确！</div>
               <div v-else class="fb-wrong">😞 回答错误，正确答案：{{ item.correctAnswer }}</div>
-            </div>
-          </template>
-          <template v-else-if="item.type === 'multiple_choice'">
-            <ul class="mc-list" v-if="item.options">
-              <li v-for="opt in item.options" :key="opt.label" :class="getMCOptClass(item.id, opt.label, item.correctAnswer)" @click="selectOption(item, opt.label)">
-                <span class="mc-label">{{ opt.label }}</span>
-                <span class="mc-text">{{ opt.text }}</span>
-                <span v-if="getMCState(item.id).showAnswer && isCorrectOpt(opt.label, item.correctAnswer)" class="mc-badge">✅</span>
-                <span v-else-if="getMCState(item.id).showAnswer && opt.label === getMCState(item.id).selected && !isCorrectOpt(opt.label, item.correctAnswer)" class="mc-badge">❌</span>
-              </li>
-            </ul>
-            <div v-if="getMCState(item.id).showAnswer" style="margin-top:8px;font-weight:600">
-              <span v-if="isCorrectOpt(getMCState(item.id).selected, item.correctAnswer)" class="fb-correct">🎉 正确！</span>
-              <span v-else class="fb-wrong">😞 正确答案：{{ getOptText(item.options, item.correctAnswer) }}</span>
             </div>
           </template>
         </template>

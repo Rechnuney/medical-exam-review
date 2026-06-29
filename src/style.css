@@ -702,12 +702,18 @@ mark {
   font-size: 13px;
   flex-shrink: 0;
 }
-.mc-text { flex: 1; }
-.mc-badge {
-  font-size: 12px;
+/* ===== 多选题复选框 ===== */
+.mc-check {
+  font-size: 18px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  font-weight: 600;
+  color: var(--ink);
 }
+.mc-check-selected { color: var(--jade); }
 
 /* ===== Checkbox ===== */
 .auto-wrong-label {
