@@ -48,22 +48,51 @@ function submitQA(item) {
   }
 }
 
+// ── 判断单选/多选 ──
+function isMultiChoice(item) {
+  if (!item.correctAnswer) return false
+  const answer = item.correctAnswer.trim()
+  if (/^[A-E]{2,}$/.test(answer)) return true
+  if (answer.includes(',')) return true
+  return false
+}
+
 const mcStates = ref({})
 function getMCState(id) {
   if (!mcStates.value[id]) mcStates.value[id] = { selected: [], showAnswer: false }
   return mcStates.value[id]
 }
-function toggleOption(item, label) {
+
+// 单选题
+function selectSingle(item, label) {
   const state = getMCState(item.id)
   if (state.showAnswer) return
-  const idx = state.selected.indexOf(label)
-  if (idx >= 0) state.selected.splice(idx, 1)
-  else state.selected.push(label)
+  state.selected = [label]
+  state.showAnswer = true
+  if (!item.correctAnswer) return
+  const correctAnswers = (item.correctAnswer || '').split(',').map(function(a) { return a.trim(); })
+  const isCorrect = correctAnswers.includes(label)
+  if (!isCorrect && autoAddWrong.value) {
+    addWrongQuestion(subjectId.value, {
+      id: item.id, section: item.section, chapter: item.chapter, topic: item.topic,
+      type: item.type, question: item.question, options: item.options || [],
+      correctAnswer: item.correctAnswer || '', userAnswer: label,
+    })
+  }
 }
-function confirmMC(item) {
+
+// 多选题
+function toggleMulti(item, label) {
+  const state = getMCState(item.id)
+  if (state.showAnswer) return
+  const next = state.selected.filter(function(s) { return s !== label })
+  if (next.length === state.selected.length) next.push(label)
+  mcStates.value[item.id] = { selected: next, showAnswer: false }
+}
+function confirmMulti(item) {
   const state = getMCState(item.id)
   if (state.selected.length === 0) return
-  state.showAnswer = true
+  mcStates.value[item.id] = { selected: state.selected.slice(), showAnswer: true }
   if (!item.correctAnswer) return
   const correctAnswers = (item.correctAnswer || '').split(',').map(function(a) { return a.trim(); })
   const isCorrect = state.selected.length === correctAnswers.length &&
@@ -76,6 +105,7 @@ function confirmMC(item) {
     })
   }
 }
+
 function getMCOptClass(id, label, correct) {
   const state = getMCState(id)
   if (!state.showAnswer) {
@@ -164,17 +194,36 @@ function isCorrectOpt(label, correctAnswer) {
         <!-- Practice Mode -->
         <template v-else>
           <div class="qa-q"><span class="item-num">{{ item.num }}.</span><span v-html="renderTextWithBlanks(cleanQuestionDisplay(item.question))"></span></div>
-          <template v-if="item.type === 'multiple_choice'">
+
+          <!-- 单选 -->
+          <template v-if="item.type === 'multiple_choice' && !isMultiChoice(item)">
             <ul class="mc-list" v-if="item.options">
               <li v-for="opt in item.options" :key="opt.label"
                   :class="getMCOptClass(item.id, opt.label, item.correctAnswer)"
-                  @click="toggleOption(item, opt.label)">
+                  @click="selectSingle(item, opt.label)">
+                <span class="mc-label">{{ opt.label }}</span>
+                <span class="mc-text">{{ opt.text }}</span>
+              </li>
+            </ul>
+            <div v-if="getMCState(item.id).showAnswer" style="margin-top:8px;font-weight:600">
+              <span v-if="!item.correctAnswer" style="color:var(--jade)">📖 未标注标准答案</span>
+              <span v-else-if="getMCState(item.id).selected[0] === item.correctAnswer" class="fb-correct">🎉 正确！</span>
+              <span v-else class="fb-wrong">😞 正确答案：{{ getOptText(item.options, item.correctAnswer) }}</span>
+            </div>
+          </template>
+
+          <!-- 多选 -->
+          <template v-else-if="item.type === 'multiple_choice' && isMultiChoice(item)">
+            <ul class="mc-list" v-if="item.options">
+              <li v-for="opt in item.options" :key="opt.label"
+                  :class="getMCOptClass(item.id, opt.label, item.correctAnswer)"
+                  @click="toggleMulti(item, opt.label)">
                 <span class="mc-check">{{ getMCState(item.id).selected.includes(opt.label) ? '☑' : '☐' }}</span>
                 <span class="mc-text">{{ opt.label }}. {{ opt.text }}</span>
               </li>
             </ul>
             <button class="btn" v-if="!getMCState(item.id).showAnswer"
-                    @click="confirmMC(item)"
+                    @click="confirmMulti(item)"
                     :disabled="getMCState(item.id).selected.length === 0"
                     style="margin-top:8px">
               确认选择
@@ -197,6 +246,7 @@ function isCorrectOpt(label, correctAnswer) {
               </template>
             </div>
           </template>
+
           <template v-if="item.type === 'qa'">
             <div v-if="!getQAState(item.id).submitted" class="qa-practice-area">
               <textarea v-model="getQAState(item.id).userInput" class="qa-textarea" placeholder="在此输入你的答案…" rows="3" @keydown.enter.prevent="submitQA(item)"></textarea>
